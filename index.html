@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Olbes Kistensortiersystem</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --card: #1e293b;
+    --accent: #38bdf8;
+    --accent2: #22c55e;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --danger: #ef4444;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 16px;
+  }
+  h1 {
+    font-size: 1.5rem;
+    margin: 10px 0 4px;
+    text-align: center;
+    letter-spacing: .5px;
+  }
+  .sub {
+    color: var(--muted);
+    font-size: .85rem;
+    margin-bottom: 18px;
+    text-align: center;
+  }
+  .card {
+    background: var(--card);
+    border-radius: 16px;
+    padding: 18px;
+    width: 100%;
+    max-width: 540px;
+    box-shadow: 0 6px 20px rgba(0,0,0,.35);
+    margin-bottom: 14px;
+  }
+  #micBtn {
+    width: 140px;
+    height: 140px;
+    border-radius: 50%;
+    border: none;
+    background: var(--accent);
+    color: #0b1220;
+    font-size: 1.05rem;
+    font-weight: 700;
+    cursor: pointer;
+    display: block;
+    margin: 10px auto 8px;
+    transition: transform .15s, background .2s;
+  }
+  #micBtn:active { transform: scale(.95); }
+  #micBtn.listening {
+    background: var(--danger);
+    color: #fff;
+    animation: pulse 1.2s infinite;
+  }
+  @keyframes pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(239,68,68,.6); }
+    100% { box-shadow: 0 0 0 22px rgba(239,68,68,0); }
+  }
+  #status {
+    text-align: center;
+    color: var(--muted);
+    font-size: .9rem;
+    min-height: 22px;
+  }
+  #transcript {
+    text-align: center;
+    font-size: 1rem;
+    margin-top: 8px;
+    min-height: 24px;
+    color: var(--accent);
+  }
+  #response {
+    background: #0b1220;
+    border-radius: 12px;
+    padding: 14px;
+    min-height: 60px;
+    font-size: 1.05rem;
+    line-height: 1.45;
+    border-left: 4px solid var(--accent2);
+  }
+  input[type=text] {
+    width: 100%;
+    padding: 12px;
+    border-radius: 10px;
+    border: 1px solid #334155;
+    background: #0b1220;
+    color: var(--text);
+    font-size: 1rem;
+  }
+  .row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  button.mini {
+    background: var(--accent);
+    color: #0b1220;
+    border: none;
+    padding: 10px 16px;
+    border-radius: 10px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button.ghost {
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid #334155;
+    padding: 10px 14px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: .85rem;
+  }
+  details { margin-top: 10px; }
+  summary { cursor: pointer; color: var(--muted); font-size: .95rem; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+    font-size: .9rem;
+  }
+  th, td {
+    text-align: left;
+    padding: 6px 8px;
+    border-bottom: 1px solid #334155;
+  }
+  th { color: var(--muted); font-weight: 500; }
+  .hint {
+    font-size: .82rem;
+    color: var(--muted);
+    margin-top: 10px;
+    line-height: 1.55;
+  }
+</style>
+</head>
+<body>
+
+<h1>📦 Olbes Kistensortiersystem</h1>
+<div class="sub">Sprich mit mir – ich merke mir, was wo liegt.</div>
+
+<div class="card">
+  <button id="micBtn">🎤 Sprechen</button>
+  <div id="status">Bereit.</div>
+  <div id="transcript"></div>
+</div>
+
+<div class="card">
+  <div id="response">Noch keine Antwort.</div>
+</div>
+
+<div class="card">
+  <input type="text" id="textInput" placeholder="Oder tippen: Isopropanol Kiste 1 Eilendorf" />
+  <div class="row">
+    <button class="mini" id="sendBtn">Senden</button>
+    <button class="ghost" id="clearBtn">Alles löschen</button>
+  </div>
+  <div class="hint">
+    Beispiele:<br>
+    • „Isopropanol Kiste 1 Eilendorf“<br>
+    • „Wo ist Isopropanol?“<br>
+    • „Was ist in Kiste 7 in Eifel?“<br>
+    • „Lösche Isopropanol“
+  </div>
+</div>
+
+<details class="card">
+  <summary>📋 Alle Einträge anzeigen</summary>
+  <div id="listWrap"></div>
+</details>
+
+<script>
+/* ---------- Speicher ---------- */
+const STORAGE_KEY = 'olbes_kistensortiersystem_v1';
+let daten = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+/* Eintrag: { artikel, behaelterTyp, behaelterNr, ort } */
+
+function speichern() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(daten));
+  renderListe();
+}
+
+/* ---------- Orte & Behälter ---------- */
+const ORTE = [
+  { key: 'eilendorf',  label: 'Eilendorf'  },
+  { key: 'eifelhaus',  label: 'Eifelhaus'  },
+  { key: 'eifel',      label: 'Eifel'      },
+  { key: 'garage',     label: 'Garage'     },
+  { key: 'gartenhaus', label: 'Gartenhaus' }
+];
+
+const BEHAELTER = [
+  { key: 'kiste',     label: 'Kiste'     },
+  { key: 'box',       label: 'Box'       },
+  { key: 'schublade', label: 'Schublade' }
+];
+
+/* ---------- Hilfsfunktionen ---------- */
+function normalisiere(s) {
+  return s.toLowerCase()
+    .replace(/ä/g, 'ae')
+    .replace(/ö/g, 'oe')
+    .replace(/ü/g, 'ue')
+    .replace(/ß/g, 'ss')
+    .replace(/[.,!?;]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+const ZAHLWORT = {
+  null: 0, eins: 1, ein: 1, eine: 1, zwei: 2, drei: 3, vier: 4,
+  fuenf: 5, fünf: 5, sechs: 6, sieben: 7, acht: 8, neun: 9, zehn: 10,
+  elf: 11, zwoelf: 12, zwölf: 12, dreizehn: 13, vierzehn: 14,
+  fuenfzehn: 15, fünfzehn: 15, sechzehn: 16, siebzehn: 17,
+  achtzehn: 18, neunzehn: 19, zwanzig: 20
+};
+
+function zahlAusToken(t) {
+  if (/^\d+$/.test(t)) return parseInt(t, 10);
+  return ZAHLWORT[t] !== undefined ? ZAHLWORT[t] : null;
+}
+
+function findeBehaelter(text) {
+  for (const b of BEHAELTER) {
+    const re = new RegExp('\\b' + b.key + '\\s+(\\d+|[a-zäöüß]+)\\b');
+    const m = text.match(re);
+    if (m) {
+      const nr = zahlAusToken(m[1]);
+      if (nr !== null) return { typ: b.label, nr: nr, matched: m[0] };
+    }
+  }
+  return null;
+}
+
+function findeOrt(text) {
+  for (const o of ORTE) {
+    if (text.includes(o.key)) return o.label;
+  }
+  return null;
+}
+
+/* ---------- Befehlsverarbeitung ---------- */
+function verarbeite(eingabe) {
+  const roh = eingabe.trim();
+  if (!roh) return 'Ich habe nichts gehört.';
+  const t = normalisiere(roh);
+
+  /* Alles löschen */
+  if (/(loesche|loesch|entferne)\s+(alles|alle)\b/.test(t)) {
+    daten = [];
+    speichern();
+    return 'Alles gelöscht. Ich fange neu an.';
+  }
+
+  /* Einzelnen Eintrag löschen */
+  const mDel = t.match(/^(loesche|loesch|entferne)\s+(.+)$/);
+  if (mDel) {
+    const ziel = mDel[2].trim();
+    const vorher = daten.length;
+    daten = daten.filter(d => normalisiere(d.artikel) !== ziel);
+    speichern();
+    return vorher === daten.length
+      ? 'Ich habe nichts mit "' + ziel + '" gefunden.'
+      : '"' + ziel + '" wurde gelöscht.';
+  }
+
+  /* Was ist in Kiste X in Ort? */
+  if (/^was\s+(ist|liegt)\s+in\b/.test(t)) {
+    const b = findeBehaelter(t);
+    if (!b) return 'Ich konnte keinen Behälter erkennen. Sag zum Beispiel: Was ist in Kiste 7 in Eifel?';
+    const ort = findeOrt(t);
+    const treffer = daten.filter(d =>
+      d.behaelterTyp.toLowerCase() === b.typ.toLowerCase() &&
+      d.behaelterNr === b.nr &&
+      (!ort || d.ort.toLowerCase() === ort.toLowerCase())
+    );
+    if (treffer.length === 0)
+      return 'In ' + b.typ + ' ' + b.nr + (ort ? ' in ' + ort : '') + ' ist nichts gespeichert.';
+    const liste = treffer.map(d => d.artikel + ' (' + d.ort + ')').join(', ');
+    return 'In ' + b.typ + ' ' + b.nr + (ort ? ' in ' + ort : '') + ' liegt: ' + liste + '.';
+  }
+
+  /* Wo ist X? */
+  const mWo = t.match(/(?:wo\s+ist|wo\s+liegt|wo\s+finde\s+ich)\s+(.+?)\??$/);
+  if (mWo) {
+    let ziel = mWo[1].replace(/^(der|die|das|den)\s+/, '').trim();
+    const treffer = daten.filter(d =>
+      normalisiere(d.artikel).includes(ziel) || ziel.includes(normalisiere(d.artikel))
+    );
+    if (treffer.length === 0) return 'Ich habe "' + ziel + '" nicht gespeichert.';
+    return treffer.map(d =>
+      d.artikel + ' ist in ' + d.behaelterTyp + ' ' + d.behaelterNr + ' in ' + d.ort
+    ).join('. ') + '.';
+  }
+
+  /* Sonst: Eintrag speichern */
+  const b = findeBehaelter(t);
+  if (!b) return 'Ich konnte keinen Behälter erkennen. Sag zum Beispiel: Isopropanol Kiste 1 Eilendorf.';
+  const ort = findeOrt(t);
+  if (!ort) return 'Ich konnte keinen Ort erkennen. Verfügbare Orte: ' + ORTE.map(o => o.label).join(', ') + '.';
+
+  let artikel = t;
+  artikel = artikel.replace(b.matched, ' ');
+  for (const o of ORTE) {
+    artikel = artikel.replace(new RegExp('\\b' + o.key + '\\b', 'g'), ' ');
+  }
+  artikel = artikel.replace(/\b(in|nach|kommt|gehoert|gehört|ist|zu|der|die|das|den|im|an)\b/g, ' ');
+  artikel = artikel.replace(/\s+/g, ' ').trim();
+
+  if (!artikel) return 'Ich habe keinen Artikelnamen erkannt.';
+
+  const artikelAnzeige = artikel.charAt(0).toUpperCase() + artikel.slice(1);
+
+  daten = daten.filter(d =>
+    !(normalisiere(d.artikel) === normalisiere(artikelAnzeige) &&
+      d.ort.toLowerCase() === ort.toLowerCase())
+  );
+  daten.push({
+    artikel: artikelAnzeige,
+    behaelterTyp: b.typ,
+    behaelterNr: b.nr,
+    ort: ort
+  });
+  speichern();
+
+  return artikelAnzeige + ' ist jetzt in ' + b.typ + ' ' + b.nr + ' in ' + ort + '.';
+}
+
+/* ---------- Ausgabe ---------- */
+function spreche(text) {
+  if (!('speechSynthesis' in window)) return;
+  window.speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = 'de-DE';
+  u.rate = 1.0;
+  u.pitch = 1.0;
+  window.speechSynthesis.speak(u);
+}
+
+function antworte(text) {
+  document.getElementById('response').textContent = text;
+  spreche(text);
+}
+
+/* ---------- Spracheingabe ---------- */
+let recognition = null;
+let hoert = false;
+
+function initRecognition() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) return null;
+  const r = new SR();
+  r.lang = 'de-DE';
+  r.continuous = false;
+  r.interimResults = true;
+  r.maxAlternatives = 1;
+
+  r.onstart = function () {
+    hoert = true;
+    document.getElementById('micBtn').classList.add('listening');
+    document.getElementById('micBtn').textContent = '⏹ Stopp';
+    document.getElementById('status').textContent = 'Ich höre zu …';
+    document.getElementById('transcript').textContent = '';
+  };
+
+  r.onresult = function (e) {
+    let text = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      text += e.results[i][0].transcript;
+    }
+    document.getElementById('transcript').textContent = '„' + text.trim() + '“';
+    if (e.results[e.results.length - 1].isFinal) {
+      const antwort = verarbeite(text);
+      antworte(antwort);
+    }
+  };
+
+  r.onerror = function (e) {
+    document.getElementById('status').textContent = 'Fehler: ' + e.error;
+  };
+
+  r.onend = function () {
+    hoert = false;
+    document.getElementById('micBtn').classList.remove('listening');
+    document.getElementById('micBtn').textContent = '🎤 Sprechen';
+    document.getElementById('status').textContent = 'Bereit.';
+  };
+
+  return r;
+}
+
+document.getElementById('micBtn').addEventListener('click', function () {
+  if (!recognition) {
+    recognition = initRecognition();
+    if (!recognition) {
+      antworte('Spracheingabe wird von diesem Browser leider nicht unterstützt. Bitte nutze Chrome oder Edge.');
+      return;
+    }
+  }
+  if (hoert) {
+    recognition.stop();
+  } else {
+    try { recognition.start(); } catch (e) {}
+  }
+});
+
+/* ---------- Textfeld ---------- */
+const input = document.getElementById('textInput');
+document.getElementById('sendBtn').addEventListener('click', function () {
+  if (!input.value.trim()) return;
+  const antwort = verarbeite(input.value);
+  antworte(antwort);
+  input.value = '';
+});
+input.addEventListener('keydown', function (e) {
+  if (e.key === 'Enter') document.getElementById('sendBtn').click();
+});
+
+/* ---------- Alles löschen ---------- */
+document.getElementById('clearBtn').addEventListener('click', function () {
+  if (confirm('Wirklich alle Einträge löschen?')) {
+    daten = [];
+    speichern();
+    antworte('Alles gelöscht.');
+  }
+});
+
+/* ---------- Liste anzeigen ---------- */
+function renderListe() {
+  const wrap = document.getElementById('listWrap');
+  if (daten.length === 0) {
+    wrap.innerHTML = '<p style="color:#94a3b8">Noch keine Einträge.</p>';
+    return;
+  }
+  let html = '<table><thead><tr><th>Artikel</th><th>Behälter</th><th>Ort</th></tr></thead><tbody>';
+  for (const d of daten) {
+    html += '<tr><td>' + d.artikel + '</td><td>' + d.behaelterTyp + ' ' + d.behaelterNr + '</td><td>' + d.ort + '</td></tr>';
+  }
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+renderListe();
+document.getElementById('status').textContent = 'Bereit.';
+</script>
+
+</body>
+</html>
